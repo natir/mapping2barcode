@@ -1,14 +1,17 @@
 extern crate bio;
 extern crate clap;
+extern crate itertools;
 extern crate rust_htslib;
-
+    
 use clap::{App, Arg};
 use rust_htslib::bam;
 use rust_htslib::bam::Read;
 use bio::io::fastq;
+use itertools::Itertools;
 
 use std::slice;
 use std::ffi::CStr;
+use std::io::Write;
 use std::collections::HashMap;
 
 fn main() {
@@ -36,6 +39,14 @@ fn main() {
              .takes_value(true)
              .help("Where graph is write")
         )
+        .arg(Arg::with_name("threshold")
+             .short("t")
+             .long("threshold")
+             .display_order(40)
+             .takes_value(true)
+             .default_value("20")
+             .help("Number of read map against contig to add barcode in clique")
+        )
         .get_matches();
 
     let mut tig2reads: HashMap<String, Vec<String>> = HashMap::new();
@@ -61,7 +72,6 @@ fn main() {
         let ref_name = String::from_utf8_lossy(header.target_names()[record.tid() as usize]);
         let que_name = String::from_utf8_lossy(record.qname());
         
-        println!("{:?} {:?}", ref_name, que_name);
         tig2reads.entry(ref_name.to_string()).or_insert(Vec::new()).push(que_name.to_string());
     }
 
@@ -70,10 +80,26 @@ fn main() {
     for r in reader.records() {
         let record = r.unwrap();
 
-        reader.insert(record.id(), record.desc().unwrap_or("NA"));
+        read2barcode.insert(record.id().to_string(), record.desc().unwrap_or("NA").to_string());
     }
 
+    let threshold = matches.value_of("threshold").unwrap().parse::<u32>().unwrap();
+    let mut writer = std::fs::File::create(matches.value_of("output").unwrap()).unwrap();
+    for (tig, reads) in tig2reads.iter() {
+        let mut barcodes: HashMap<String, u32> = HashMap::new();
+
+        for read in reads {
+            *barcodes.entry(read2barcode.get(read).unwrap().to_string()).or_insert(0) += 1;
+        }
+
+        let valid_barcodes = barcodes.into_iter().filter(|x| x.1 > threshold).map(|x| x.0).collect::<Vec<String>>();
+        for (a, b) in valid_barcodes.iter().cartesian_product(valid_barcodes.iter()) {
+            if a == b {
+                continue;
+            }
+            writer.write_fmt(format_args!("{},{}\n", a, b));
+        }
+    }
     
-    
-    println!("Hello, world!");
+
 }

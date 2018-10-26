@@ -7,3 +7,4 @@ authors = ["Marijon Pierre <pierre.marijon@inria.fr>"]
 bio = "0.20"
 clap = "2.32"
 rust-htslib = "0.21"
+itertools = "*"
