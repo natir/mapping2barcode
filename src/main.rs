@@ -17,10 +17,9 @@ use rust_htslib::bam::Read;
 use bio::io::fastq;
 use itertools::Itertools;
 
-use std::slice;
 use std::ffi::CStr;
 use std::io::Write;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 fn main() {
     let matches = App::new("mapping2barcodegraph")
@@ -57,15 +56,15 @@ fn main() {
         )
         .get_matches();
 
-    let mut tig2reads: HashMap<String, Vec<String>> = HashMap::new();
+    let mut tig2reads: HashMap<String, HashSet<String>> = HashMap::new();
 
-    let mut readsAtig = bam::Reader::from_path(matches.value_of("mapping").unwrap()).unwrap();
-    let header = readsAtig.header().clone();
+    let mut read_agains_tig = bam::Reader::from_path(matches.value_of("mapping").expect("Error durring mapping file access")).expec("Error durring mapping file reading");
+    let header = read_agains_tig.header().clone();
     
     let mut nb_discard = 0;
     let mut nb_bad_mapq = 0;
-    for r in readsAtig.records() {
-        let record = r.unwrap();
+    for r in read_agains_tig.records() {
+        let record = r.expect("Trouble durring bam parsing");
         if record.is_secondary() || record.is_unmapped() {
             nb_discard += 1;
             continue
@@ -80,25 +79,27 @@ fn main() {
         let ref_name = String::from_utf8_lossy(header.target_names()[record.tid() as usize]);
         let que_name = String::from_utf8_lossy(record.qname());
         
-        tig2reads.entry(ref_name.to_string()).or_insert(Vec::new()).push(que_name.to_string());
+        tig2reads.entry(ref_name.to_string()).or_insert(HashSet::new()).insert(que_name.to_string());
     }
 
     let mut read2barcode: HashMap<String, String> = HashMap::new();
-    let (reader, _) = file::get_readable_file(matches.value_of("reads").unwrap());
+    let (reader, _) = file::get_readable_file(matches.value_of("reads").expect("We have problem to determinate compression type"));
     let parser = fastq::Reader::new(reader);
     for r in parser.records() {
-        let record = r.unwrap();
+        let record = r.expect("Error durring fastq sequence parsing");
 
         read2barcode.insert(record.id().to_string(), record.desc().unwrap_or("NA").to_string());
     }
 
-    let threshold = matches.value_of("threshold").unwrap().parse::<u32>().unwrap();
-    let mut writer = std::fs::File::create(matches.value_of("output").unwrap()).unwrap();
+    let threshold = matches.value_of("threshold").expect("Error in threshold access").parse::<u32>().expect("Error in threshold parsing");
+    let mut writer = std::fs::File::create(matches.value_of("output").expect("Error in output path access")).expect("Error durring output file creation");
     for (tig, reads) in tig2reads.iter() {
         let mut barcodes: HashMap<String, u32> = HashMap::new();
 
         for read in reads {
-            *barcodes.entry(read2barcode.get(read).unwrap().to_string()).or_insert(0) += 1;
+            if read2barcode.contains_key(read) {
+                *barcodes.entry(read2barcode.get(read).expect("read isn't in barcode dict").to_string()).or_insert(0) += 1;
+            }
         }
 
         let valid_barcodes = barcodes.into_iter().filter(|x| x.1 > threshold).map(|x| x.0).collect::<Vec<String>>();

@@ -29,7 +29,7 @@ use enum_primitive::FromPrimitive;
 /* standard use */
 use std::fs::File;
 use std::io;
-use std::io::{BufReader, BufWriter};
+use std::io::BufReader;
 
 enum_from_primitive! {
     #[repr(u64)]
