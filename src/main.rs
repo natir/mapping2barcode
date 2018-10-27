@@ -17,7 +17,6 @@ use rust_htslib::bam::Read;
 use bio::io::fastq;
 use itertools::Itertools;
 
-use std::ffi::CStr;
 use std::io::Write;
 use std::collections::{HashMap, HashSet};
 
@@ -85,32 +84,49 @@ fn main() {
         tig2reads.entry(ref_name.to_string()).or_insert(HashSet::new()).insert(que_name.to_string());
     }
 
+    
+    eprintln!("nb discard {} nb bad map qual {}", nb_discard, nb_bad_mapq);
+
+    
     let mut read2barcode: HashMap<String, String> = HashMap::new();
     let (reader, _) = file::get_readable_file(matches.value_of("reads").expect("We have problem to determinate compression type"));
     let parser = fastq::Reader::new(reader);
     for r in parser.records() {
         let record = r.expect("Error durring fastq sequence parsing");
 
+        println!("id:{} desc:{}", record.id().to_string(), record.desc().unwrap_or("NA").to_string());
         read2barcode.insert(record.id().to_string(), record.desc().unwrap_or("NA").to_string());
     }
 
+    
+    eprintln!("nb tuple read barcode indexed {}", read2barcode.len());
+
+    
     let threshold = matches.value_of("threshold").expect("Error in threshold access").parse::<u32>().expect("Error in threshold parsing");
     let mut writer = std::fs::File::create(matches.value_of("output").expect("Error in output path access")).expect("Error durring output file creation");
     for (tig, reads) in tig2reads.iter() {
         let mut barcodes: HashMap<String, u32> = HashMap::new();
-
+        let mut nb_read_tt = 0;
+        let mut nb_read_without_barcode = 0;
+        
         for read in reads {
+            nb_read_tt += 1;
             if read2barcode.contains_key(read) {
                 *barcodes.entry(read2barcode.get(read).expect("read isn't in barcode dict").to_string()).or_insert(0) += 1;
+            } else {
+                nb_read_without_barcode += 1;
             }
         }
 
+        eprintln!("tig {} nb total read {} nb read without barcode {}", tig, nb_read_tt, nb_read_without_barcode);
+
         let valid_barcodes = barcodes.into_iter().filter(|x| x.1 > threshold).map(|x| x.0).collect::<Vec<String>>();
+        eprintln!("nb barcodes {}", valid_barcodes.len());
         for (a, b) in valid_barcodes.iter().cartesian_product(valid_barcodes.iter()) {
             if a == b {
                 continue;
             }
-            writer.write_fmt(format_args!("{},{}\n", a, b));
+            writer.write_fmt(format_args!("{},{}\n", a, b)).expect("Error durring write");
         }
     }
     
