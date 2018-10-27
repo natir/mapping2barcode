@@ -29,11 +29,13 @@ fn main() {
         .arg(Arg::with_name("reads")
              .short("r")
              .long("reads")
+             .required(true)
              .display_order(10)
              .takes_value(true)
              .help("Reads with this header format [>|@]read_id barcode"))
         .arg(Arg::with_name("mapping")
              .short("m")
+             .required(true)
              .long("mapping")
              .display_order(20)
              .takes_value(true)
@@ -41,6 +43,7 @@ fn main() {
         )
         .arg(Arg::with_name("output")
              .short("o")
+             .required(true)
              .long("output")
              .display_order(30)
              .takes_value(true)
@@ -58,7 +61,7 @@ fn main() {
 
     let mut tig2reads: HashMap<String, HashSet<String>> = HashMap::new();
 
-    let mut read_agains_tig = bam::Reader::from_path(matches.value_of("mapping").expect("Error durring mapping file access")).expec("Error durring mapping file reading");
+    let mut read_agains_tig = bam::Reader::from_path(matches.value_of("mapping").expect("Error durring mapping file access")).expect("Error durring mapping file reading");
     let header = read_agains_tig.header().clone();
     
     let mut nb_discard = 0;
