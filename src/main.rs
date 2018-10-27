@@ -1,8 +1,16 @@
 extern crate bio;
+extern crate xz2;
 extern crate clap;
+extern crate bzip2;
+extern crate flate2;
 extern crate itertools;
 extern crate rust_htslib;
-    
+
+#[macro_use]
+extern crate enum_primitive;
+
+mod file;
+
 use clap::{App, Arg};
 use rust_htslib::bam;
 use rust_htslib::bam::Read;
@@ -76,8 +84,9 @@ fn main() {
     }
 
     let mut read2barcode: HashMap<String, String> = HashMap::new();
-    let reader = fastq::Reader::from_file(matches.value_of("reads").unwrap()).unwrap();
-    for r in reader.records() {
+    let (reader, _) = file::get_readable_file(matches.value_of("reads").unwrap());
+    let parser = fastq::Reader::new(reader);
+    for r in parser.records() {
         let record = r.unwrap();
 
         read2barcode.insert(record.id().to_string(), record.desc().unwrap_or("NA").to_string());
