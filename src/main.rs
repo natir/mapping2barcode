@@ -94,7 +94,6 @@ fn main() {
     for r in parser.records() {
         let record = r.expect("Error durring fastq sequence parsing");
 
-        println!("id:{} desc:{}", record.id().to_string(), record.desc().unwrap_or("NA").to_string());
         read2barcode.insert(record.id().to_string(), record.desc().unwrap_or("NA").to_string());
     }
 
