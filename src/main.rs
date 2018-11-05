@@ -113,6 +113,7 @@ fn main() {
     
     let threshold = matches.value_of("threshold").expect("Error in threshold access").parse::<u32>().expect("Error in threshold parsing");
     let mut writer = std::fs::File::create(matches.value_of("output").expect("Error in output path access")).expect("Error durring output file creation");
+    let mut edge_writed: HashSet<(String, String)> = HashSet::new();
     for (tig, reads) in tig2reads.iter() {
         let mut barcodes: HashMap<String, u32> = HashMap::new();
         let mut nb_read_tt = 0;
@@ -131,10 +132,19 @@ fn main() {
 
         let valid_barcodes = barcodes.into_iter().filter(|x| x.1 > threshold).map(|x| x.0).collect::<Vec<String>>();
         eprintln!("nb barcodes {}", valid_barcodes.len());
+
+
         for (a, b) in valid_barcodes.iter().cartesian_product(valid_barcodes.iter()) {
             if a == b {
                 continue;
             }
+
+            let key = (a.to_string(), b.to_string());
+            if edge_writed.contains(&key) || edge_writed.contains(&key) {
+                continue;
+            }
+
+            edge_writed.insert(key);
             writer.write_fmt(format_args!("{},{}\n", a, b)).expect("Error durring write");
         }
     }
