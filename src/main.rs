@@ -94,7 +94,17 @@ fn main() {
     for r in parser.records() {
         let record = r.expect("Error durring fastq sequence parsing");
 
-        read2barcode.insert(record.id().to_string(), record.desc().unwrap_or("NA").to_string());
+        let read_id = record.id().to_string().split("/").next().expect("Error durring fastq header parssing").to_string();
+        let raw_barcode = record.desc().unwrap_or("NA").to_string();
+        let mut barcode = "NA".to_string();
+        for b in raw_barcode.split(" ") {
+            if b.starts_with("BX") {
+                barcode = b.to_string();
+                break;
+            }
+        }
+        
+        read2barcode.insert(read_id, barcode);
     }
 
     
