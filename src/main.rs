@@ -56,7 +56,18 @@ fn main() {
              .default_value("20")
              .help("Number of read map against contig to add barcode in clique")
         )
+        .arg(Arg::with_name("min_mapq")
+             .short("M")
+             .long("minimal-mapq")
+             .display_order(50)
+             .takes_value(true)
+             .default_value("50")
+             .help("If mapping quality is less than this threshold the mapping is discard")
+        )
         .get_matches();
+
+    let threshold = matches.value_of("threshold").expect("Error durring threshold access").parse::<u32>().expect("Error durring threshold parsing");
+    let min_mapq = matches.value_of("min_mapq").expect("Error durring minimal mapq access").parse::<u8>().expect("Error durring minimal mapq parsing");
 
     let mut tig2reads: HashMap<String, HashSet<String>> = HashMap::new();
 
@@ -72,7 +83,7 @@ fn main() {
             continue
         }
         
-        if record.mapq() < 60 {
+        if record.mapq() < min_mapq {
             nb_discard += 1;
             nb_bad_mapq += 1;
             continue
@@ -111,7 +122,6 @@ fn main() {
     eprintln!("nb tuple read barcode indexed {}", read2barcode.len());
 
     
-    let threshold = matches.value_of("threshold").expect("Error in threshold access").parse::<u32>().expect("Error in threshold parsing");
     let mut writer = std::fs::File::create(matches.value_of("output").expect("Error in output path access")).expect("Error durring output file creation");
     let mut edge_writed: HashSet<(String, String)> = HashSet::new();
     for (tig, reads) in tig2reads.iter() {
