@@ -3,26 +3,26 @@ extern crate xz2;
 extern crate clap;
 extern crate bzip2;
 extern crate flate2;
+extern crate petgraph;
 extern crate itertools;
 extern crate rust_htslib;
 
 #[macro_use]
 extern crate enum_primitive;
 
+/* project mod */
 mod file;
+mod work;
 
+/* crates use */
 use clap::{App, Arg};
-use rust_htslib::bam;
-use rust_htslib::bam::Read;
-use bio::io::fastq;
-use itertools::Itertools;
 
-use std::io::Write;
+/* std use */
 use std::collections::{HashMap, HashSet};
 
 fn main() {
     let matches = App::new("mapping2barcodegraph")
-        .version("0.1")
+        .version("0.2")
         .author("Pierre Marijon <pierre.marijon@inria.fr>")
         .about("Use mapping of barcode 10x read to assembly to build a barcode graph")
         .arg(Arg::with_name("reads")
@@ -40,20 +40,28 @@ fn main() {
              .takes_value(true)
              .help("Mapping of reads against assembly only bam file")
         )
+        .arg(Arg::with_name("graph")
+             .short("g")
+             .required(true)
+             .long("graph")
+             .display_order(25)
+             .takes_value(true)
+             .help("Contig graph of reads in fasta format")
+        )
         .arg(Arg::with_name("output")
              .short("o")
              .required(true)
              .long("output")
              .display_order(30)
              .takes_value(true)
-             .help("Where graph is write")
+             .help("Output prefix")
         )
         .arg(Arg::with_name("threshold")
              .short("t")
              .long("threshold")
              .display_order(40)
              .takes_value(true)
-             .default_value("20")
+             .default_value("100000")
              .help("Number of read map against contig to add barcode in clique")
         )
         .arg(Arg::with_name("min_mapq")
@@ -66,98 +74,57 @@ fn main() {
         )
         .get_matches();
 
-    let threshold = matches.value_of("threshold").expect("Error durring threshold access").parse::<u32>().expect("Error durring threshold parsing");
+    let reads_path = matches.value_of("reads").expect("Error durring reads path access").to_string();
+    let mapping_path = matches.value_of("mapping").expect("Error durring map path access").to_string();
+    let graph_path = matches.value_of("graph").expect("Error durring graph path access").to_string();
+    
+    let threshold = matches.value_of("threshold").expect("Error durring threshold access").parse::<u64>().expect("Error durring threshold parsing");
     let min_mapq = matches.value_of("min_mapq").expect("Error durring minimal mapq access").parse::<u8>().expect("Error durring minimal mapq parsing");
 
-    let mut tig2reads: HashMap<String, HashSet<String>> = HashMap::new();
+    eprintln!("read barcode info\n\tbegin");
+    let mut reads2barcode: HashMap<String, String>;
+    let mut barcode2reads: HashMap<String, HashSet<String>>;
 
-    let mut read_agains_tig = bam::Reader::from_path(matches.value_of("mapping").expect("Error durring mapping file access")).expect("Error durring mapping file reading");
-    let header = read_agains_tig.header().clone();
+    let (reads2barcode, barcode2reads) = work::get_read_barcode_info(reads_path);
+    eprintln!("\tend");
+
+    eprintln!("read mapping info\n\tbegin");
+    let mut reads2contig_pos: HashMap<String, (String, u64, u64)>;
+    let mut contigs2read_pos: HashMap<String, HashSet<(String, u64, u64)>>;
+
+    let (reads2contig_pos, contigs2read_pos) = work::get_read_mapping_info(mapping_path, min_mapq);
+    eprintln!("\tend");
+
+    eprintln!("build pre molecule\n\tbegin");
+    let mut barcode2premolecule: HashMap<String, HashSet<String>>;
+    let mut premolecule2barcode: HashMap<String, HashSet<String>>;
+    let mut reads2premolecule: HashMap<String, String>;
+    let mut premolecule2reads: HashMap<String, HashSet<String>>;
+    let mut tig2premolecule_pos : HashMap<String, HashSet<(String, u64, u64)>>;
+    let mut premolecule2tig_pos : HashMap<String, (String, u64, u64)>;
+
+    let (premolecule2barcode, barcode2premolecule, premolecule2reads, reads2premolecule, tig2premolecule_pos, premolecule2tig_pos) = work::build_premolecule(barcode2reads, &reads2barcode, reads2contig_pos, contigs2read_pos, threshold);
+    eprintln!("\tend");
     
-    let mut nb_discard = 0;
-    let mut nb_bad_mapq = 0;
-    for r in read_agains_tig.records() {
-        let record = r.expect("Trouble durring bam parsing");
-        if record.is_secondary() || record.is_unmapped() {
-            nb_discard += 1;
-            continue
-        }
-        
-        if record.mapq() < min_mapq {
-            nb_discard += 1;
-            nb_bad_mapq += 1;
-            continue
-        }
-
-        let ref_name = String::from_utf8_lossy(header.target_names()[record.tid() as usize]);
-        let que_name = String::from_utf8_lossy(record.qname());
-        
-        tig2reads.entry(ref_name.to_string()).or_insert(HashSet::new()).insert(que_name.to_string());
-    }
-
+    eprintln!("read assembly graph\n\tbegin");
+    let (tig_graph, tig2len, tig2index) = work::parse_graph(graph_path);
+    eprintln!("\tend");
     
-    eprintln!("nb discard {} nb bad map qual {}", nb_discard, nb_bad_mapq);
-
+    eprintln!("build pre molecule graph\n\tbegin");
+    let (premolecule_graph, premolecule2index) = work::build_premolecule_graph(tig_graph, tig2len, premolecule2tig_pos, barcode2premolecule, tig2index, threshold);
+    eprintln!("\tend");
     
-    let mut read2barcode: HashMap<String, String> = HashMap::new();
-    let (reader, _) = file::get_readable_file(matches.value_of("reads").expect("We have problem to determinate compression type"));
-    let parser = fastq::Reader::new(reader);
-    for r in parser.records() {
-        let record = r.expect("Error durring fastq sequence parsing");
+    eprintln!("label read with molecule\n\tbegin");
+    for (id, cc) in petgraph::algo::kosaraju_scc(&premolecule_graph).iter().enumerate() {
+        for node in cc {
+            let premolecule = premolecule_graph.node_weight(*node).unwrap();
+            for read in premolecule2reads.get(premolecule).unwrap() {
+                let barcode = reads2barcode.get(read).unwrap();
 
-        let read_id = record.id().to_string().split("/").next().expect("Error durring fastq header parssing").to_string();
-        let raw_barcode = record.desc().unwrap_or("NA").to_string();
-        let mut barcode = "NA".to_string();
-        for b in raw_barcode.split(" ") {
-            if b.starts_with("BX") {
-                barcode = b.to_string();
-                break;
+                println!("{}\t{}\t{}", barcode, read, id);
             }
-        }
-        
-        read2barcode.insert(read_id, barcode);
-    }
-
-    
-    eprintln!("nb tuple read barcode indexed {}", read2barcode.len());
-
-    
-    let mut writer = std::fs::File::create(matches.value_of("output").expect("Error in output path access")).expect("Error durring output file creation");
-    let mut edge_writed: HashSet<(String, String)> = HashSet::new();
-    for (tig, reads) in tig2reads.iter() {
-        let mut barcodes: HashMap<String, u32> = HashMap::new();
-        let mut nb_read_tt = 0;
-        let mut nb_read_without_barcode = 0;
-        
-        for read in reads {
-            nb_read_tt += 1;
-            if read2barcode.contains_key(read) {
-                *barcodes.entry(read2barcode.get(read).expect("read isn't in barcode dict").to_string()).or_insert(0) += 1;
-            } else {
-                nb_read_without_barcode += 1;
-            }
-        }
-
-        eprintln!("tig {} nb total read {} nb read without barcode {}", tig, nb_read_tt, nb_read_without_barcode);
-
-        let valid_barcodes = barcodes.into_iter().filter(|x| x.1 > threshold).map(|x| x.0).collect::<Vec<String>>();
-        eprintln!("nb barcodes {}", valid_barcodes.len());
-
-
-        for (a, b) in valid_barcodes.iter().cartesian_product(valid_barcodes.iter()) {
-            if a == b {
-                continue;
-            }
-
-            let key = (a.to_string(), b.to_string());
-            if edge_writed.contains(&key) || edge_writed.contains(&key) {
-                continue;
-            }
-
-            edge_writed.insert(key);
-            writer.write_fmt(format_args!("{},{}\n", a, b)).expect("Error durring write");
         }
     }
-    
-
+    eprintln!("\tend");
 }
+
