@@ -88,7 +88,7 @@ fn main() {
     eprintln!("read assembly graph\n\tbegin");
     let (tig_graph, tig2len, tig2index) = work::parse_graph(graph_path);
     eprintln!("\tend");
-    
+
     eprintln!("build pre molecule graph\n\tbegin");
     let (premolecule_graph, premolecule2index) = work::build_premolecule_graph(tig_graph, tig2len, premolecule2tig_pos, barcode2premolecule, tig2index, threshold);
     eprintln!("\tend");

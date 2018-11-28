@@ -20,6 +20,7 @@ pub fn parse_graph(graph_path: String) -> (petgraph::Graph<String, String>, Hash
 
         if &record[0] == "S" {
             contig_len.insert(record[1].to_string(), record[2].len() as u64);
+            add_node(&mut contig_graph, record[1].to_string(), &mut node2index);
         }
         
         if &record[0] == "L" {
@@ -61,6 +62,7 @@ pub fn build_premolecule_graph(tig_graph: petgraph::Graph<String, String>, tig2l
 
             let tig_ = &premolecule2tig.get(p1).expect("tig1_").0;
             let tig1 = *tig2index.get(tig_).expect("tig1");
+            
             let tig2 = *tig2index.get(&premolecule2tig.get(p2).expect("tig2_").0).expect("tig2");
             let weight = if tig1 == tig2 {
                 same_tig_dist(premolecule2tig.get(p1).expect("same tig p1"), premolecule2tig.get(p2).expect("same tig p2"))
@@ -116,7 +118,13 @@ fn other_tig_dist(node1: petgraph::graph::NodeIndex, p1: &(String, Vec<u64>), no
     let p1_end = p1.1.iter().max().unwrap();
     let p2_begin = p2.1.iter().min().unwrap();    
 
-    let (_, mut path) = petgraph::algo::astar(graph, node1, |finish| finish == node2, |_| 1, |_| 0).unwrap();
+    let mut p = petgraph::algo::astar(graph, node1, |finish| finish == node2, |_| 1, |_| 0);
+
+    let mut path;
+    match p.is_none() {
+        true => return std::u64::MAX,
+        false => path = p.unwrap().1,
+    };
 
     let node_name1 = graph.node_weight(path.remove(0)).unwrap();
     cumulative_len += tig2len.get(node_name1).unwrap() - p1_end;
