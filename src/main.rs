@@ -1,11 +1,11 @@
 extern crate bio;
 extern crate xz2;
+extern crate csv;
 extern crate clap;
 extern crate bzip2;
 extern crate flate2;
 extern crate petgraph;
 extern crate itertools;
-extern crate rust_htslib;
 
 #[macro_use]
 extern crate enum_primitive;
@@ -81,29 +81,8 @@ fn main() {
     let threshold = matches.value_of("threshold").expect("Error durring threshold access").parse::<u64>().expect("Error durring threshold parsing");
     let min_mapq = matches.value_of("min_mapq").expect("Error durring minimal mapq access").parse::<u8>().expect("Error durring minimal mapq parsing");
 
-    eprintln!("read barcode info\n\tbegin");
-    let mut reads2barcode: HashMap<String, String>;
-    let mut barcode2reads: HashMap<String, HashSet<String>>;
-
-    let (reads2barcode, barcode2reads) = work::get_read_barcode_info(reads_path);
-    eprintln!("\tend");
-
-    eprintln!("read mapping info\n\tbegin");
-    let mut reads2contig_pos: HashMap<String, (String, u64, u64)>;
-    let mut contigs2read_pos: HashMap<String, HashSet<(String, u64, u64)>>;
-
-    let (reads2contig_pos, contigs2read_pos) = work::get_read_mapping_info(mapping_path, min_mapq);
-    eprintln!("\tend");
-
-    eprintln!("build pre molecule\n\tbegin");
-    let mut barcode2premolecule: HashMap<String, HashSet<String>>;
-    let mut premolecule2barcode: HashMap<String, HashSet<String>>;
-    let mut reads2premolecule: HashMap<String, String>;
-    let mut premolecule2reads: HashMap<String, HashSet<String>>;
-    let mut tig2premolecule_pos : HashMap<String, HashSet<(String, u64, u64)>>;
-    let mut premolecule2tig_pos : HashMap<String, (String, u64, u64)>;
-
-    let (premolecule2barcode, barcode2premolecule, premolecule2reads, reads2premolecule, tig2premolecule_pos, premolecule2tig_pos) = work::build_premolecule(barcode2reads, &reads2barcode, reads2contig_pos, contigs2read_pos, threshold);
+    eprintln!("read ema info\n\tbegin");
+    let (premolecule2tig_pos, barcode2premolecule, premolecule2reads, reads2barcode) = work::get_ema_info(reads_path);
     eprintln!("\tend");
     
     eprintln!("read assembly graph\n\tbegin");

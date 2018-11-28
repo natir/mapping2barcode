@@ -6,10 +6,10 @@ authors = ["Marijon Pierre <pierre.marijon@inria.fr>"]
 [dependencies]
 bio            = "0.20"
 xz2            = "0.1"
+csv	       = "1"
 clap           = "2.32"
 bzip2          = "0.3.3"
 flate2         = "1.0"
 petgraph       = "*"
 itertools      = "*"
-rust-htslib    = "0.21"
 enum_primitive = "0.1.1"
