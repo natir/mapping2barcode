@@ -7,7 +7,6 @@ use bio::io::{fastq, fasta};
 use std::collections::{HashMap, HashSet};
 use itertools::Itertools;
 
-
 pub fn parse_graph(graph_path: String) -> (petgraph::Graph<String, String>, HashMap<String, u64>, HashMap<String, petgraph::graph::NodeIndex>) {
     let mut contig_len: HashMap<String, u64> = HashMap::new();
     let mut node2index: HashMap<String, petgraph::graph::NodeIndex> = HashMap::new();
@@ -15,25 +14,16 @@ pub fn parse_graph(graph_path: String) -> (petgraph::Graph<String, String>, Hash
 
     let (reader, _) = file::get_readable_file(&graph_path);
     
-    let parser = fasta::Reader::new(reader);
+    let mut parser = csv::ReaderBuilder::new().delimiter(b'\t').flexible(true).from_reader(reader);
     for r in parser.records() {
-        let record = r.expect("Error in contig fasta parssing");
-        let start = record.id();
-        for desc in record.desc().unwrap_or("").split(" ") {
-            if desc.starts_with("LN:i:") {
-                contig_len.insert(start.to_string(), desc[5..].to_string().parse::<u64>().unwrap());
-            }
-            
-            if desc.starts_with("L:") {
-                let mut tmp = desc.split(":");
-                tmp.next();
-                let mut edge = String::new();
-                edge.push(tmp.next().unwrap().chars().next().unwrap());
-                let dest = tmp.next().unwrap();
-                edge.push(tmp.next().unwrap().chars().next().unwrap());
-                
-                add_edge(&mut contig_graph, &mut node2index, start.to_string(), dest.to_string(), edge);
-            }
+        let record = r.expect("Error in contig gfa parssing");
+
+        if &record[0] == "S" {
+            contig_len.insert(record[1].to_string(), record[2].len() as u64);
+        }
+        
+        if &record[0] == "L" {
+            add_edge(&mut contig_graph, &mut node2index, record[1].to_string(), record[3].to_string(), format!("{}{}", record[2].to_string(), record[4].to_string()));
         }
     }
 
@@ -69,13 +59,13 @@ pub fn build_premolecule_graph(tig_graph: petgraph::Graph<String, String>, tig2l
                 continue
             }
 
-            let tig_ = &premolecule2tig.get(p1).unwrap().0;
-            let tig1 = *tig2index.get(tig_).unwrap();
-            let tig2 = *tig2index.get(&premolecule2tig.get(p2).unwrap().0).unwrap();
+            let tig_ = &premolecule2tig.get(p1).expect("tig1_").0;
+            let tig1 = *tig2index.get(tig_).expect("tig1");
+            let tig2 = *tig2index.get(&premolecule2tig.get(p2).expect("tig2_").0).expect("tig2");
             let weight = if tig1 == tig2 {
-                same_tig_dist(premolecule2tig.get(p1).unwrap(), premolecule2tig.get(p2).unwrap())
+                same_tig_dist(premolecule2tig.get(p1).expect("same tig p1"), premolecule2tig.get(p2).expect("same tig p2"))
             } else {
-                other_tig_dist(tig1, premolecule2tig.get(p1).unwrap(), tig2, premolecule2tig.get(p2).unwrap(), &tig_graph, &tig2len, threshold)
+                other_tig_dist(tig1, premolecule2tig.get(p1).expect("other tig p1"), tig2, premolecule2tig.get(p2).expect("other tig p2"), &tig_graph, &tig2len, threshold)
             };
 
             if weight == std::u64::MAX {
