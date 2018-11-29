@@ -18,35 +18,27 @@ mod work;
 use clap::{App, Arg};
 
 /* std use */
-use std::collections::{HashMap, HashSet};
+use std::io::Write;
 
 fn main() {
     let matches = App::new("mapping2barcodegraph")
         .version("0.2")
         .author("Pierre Marijon <pierre.marijon@inria.fr>")
         .about("Use mapping of barcode 10x read to assembly to build a barcode graph")
-        .arg(Arg::with_name("reads")
-             .short("r")
-             .long("reads")
+        .arg(Arg::with_name("ema")
+             .short("e")
+             .long("ema_info")
              .required(true)
              .display_order(10)
              .takes_value(true)
-             .help("Reads with this header format [>|@]read_id barcode"))
-        .arg(Arg::with_name("mapping")
-             .short("m")
-             .required(true)
-             .long("mapping")
-             .display_order(20)
-             .takes_value(true)
-             .help("Mapping of reads against assembly only bam file")
-        )
+             .help("Summary of ema mapping result in tsv: read_id  contig  mapping_position  barcode_id  premolecule_id"))
         .arg(Arg::with_name("graph")
              .short("g")
-             .required(true)
              .long("graph")
+             .required(true)
              .display_order(25)
              .takes_value(true)
-             .help("Contig graph of reads in fasta format")
+             .help("Contig graph in gfa1 format")
         )
         .arg(Arg::with_name("output")
              .short("o")
@@ -64,25 +56,16 @@ fn main() {
              .default_value("100000")
              .help("Number of read map against contig to add barcode in clique")
         )
-        .arg(Arg::with_name("min_mapq")
-             .short("M")
-             .long("minimal-mapq")
-             .display_order(50)
-             .takes_value(true)
-             .default_value("50")
-             .help("If mapping quality is less than this threshold the mapping is discard")
-        )
         .get_matches();
 
-    let reads_path = matches.value_of("reads").expect("Error durring reads path access").to_string();
-    let mapping_path = matches.value_of("mapping").expect("Error durring map path access").to_string();
+    let ema_path = matches.value_of("ema").expect("Error durring ema info path access").to_string();
     let graph_path = matches.value_of("graph").expect("Error durring graph path access").to_string();
+    let output_prefix = matches.value_of("output").expect("Error durring output prefix access").to_string();
     
     let threshold = matches.value_of("threshold").expect("Error durring threshold access").parse::<u64>().expect("Error durring threshold parsing");
-    let min_mapq = matches.value_of("min_mapq").expect("Error durring minimal mapq access").parse::<u8>().expect("Error durring minimal mapq parsing");
 
     eprintln!("read ema info\n\tbegin");
-    let (premolecule2tig_pos, barcode2premolecule, premolecule2reads, reads2barcode) = work::get_ema_info(reads_path);
+    let (premolecule2tig_pos, barcode2premolecule, premolecule2reads, reads2barcode) = work::get_ema_info(ema_path);
     eprintln!("\tend");
     
     eprintln!("read assembly graph\n\tbegin");
@@ -90,17 +73,25 @@ fn main() {
     eprintln!("\tend");
 
     eprintln!("build pre molecule graph\n\tbegin");
-    let (premolecule_graph, premolecule2index) = work::build_premolecule_graph(tig_graph, tig2len, premolecule2tig_pos, barcode2premolecule, tig2index, threshold);
+    let (premolecule_graph, _) = work::build_premolecule_graph(tig_graph, tig2len, premolecule2tig_pos, barcode2premolecule, tig2index, threshold);
     eprintln!("\tend");
     
-    eprintln!("label read with molecule\n\tbegin");
+    eprintln!("write premolecule graph\n\tbegin");
+    let mut graph_writer = std::io::BufWriter::new(std::fs::File::create(format!("{}_premolecule_graph.edges", output_prefix)).expect("Can't create graph file"));
+    for e in premolecule_graph.raw_edges() {
+        graph_writer.write_fmt(format_args!("{},{},{}\n", premolecule_graph[e.source()], premolecule_graph[e.target()], e.weight)).expect("Error durring premolecule graph write");
+    }
+    eprintln!("\tend");
+    
+    eprintln!("label reads with molecule\n\tbegin");
+    let mut assignation_writer = std::io::BufWriter::new(std::fs::File::create(format!("{}_read2molecule.tsv", output_prefix)).expect("Can't create result file"));
     for (id, cc) in petgraph::algo::kosaraju_scc(&premolecule_graph).iter().enumerate() {
         for node in cc {
             let premolecule = premolecule_graph.node_weight(*node).unwrap();
             for read in premolecule2reads.get(premolecule).unwrap() {
                 let barcode = reads2barcode.get(read).unwrap();
 
-                println!("{}\t{}\t{}", barcode, read, id);
+                assignation_writer.write_fmt(format_args!("{}\t{}\t{}\n", barcode, read, id)).expect("Error durring read to molecule write");
             }
         }
     }

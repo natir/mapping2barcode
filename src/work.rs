@@ -3,7 +3,6 @@ use file;
 
 /* crates use */
 use csv;
-use bio::io::{fastq, fasta};
 use std::collections::{HashMap, HashSet};
 use itertools::Itertools;
 
@@ -118,7 +117,7 @@ fn other_tig_dist(node1: petgraph::graph::NodeIndex, p1: &(String, Vec<u64>), no
     let p1_end = p1.1.iter().max().unwrap();
     let p2_begin = p2.1.iter().min().unwrap();    
 
-    let mut p = petgraph::algo::astar(graph, node1, |finish| finish == node2, |_| 1, |_| 0);
+    let p = petgraph::algo::astar(graph, node1, |finish| finish == node2, |_| 1, |_| 0);
 
     let mut path;
     match p.is_none() {
