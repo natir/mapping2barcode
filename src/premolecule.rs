@@ -21,7 +21,7 @@ pub fn build_graph(tig_graph: &petgraph::Graph<String, String>, tig2len: &HashMa
             continue;
         }
 
-        if weight == 0 {
+        if *weight == 0 {
             add_edge_u64(&mut premolecule_graph, &mut node2index, p1.to_string(), p2.to_string(), 1);
         } else {
             add_edge_u64(&mut premolecule_graph, &mut node2index, p1.to_string(), p2.to_string(), *weight);
@@ -33,6 +33,7 @@ pub fn build_graph(tig_graph: &petgraph::Graph<String, String>, tig2len: &HashMa
 
 fn compute_edge_weight(premolecules: &HashSet<String>, premolecule2tig: &HashMap<String, (String, Vec<u64>)>, tig2index: &HashMap<String, petgraph::graph::NodeIndex>, tig_graph: &petgraph::Graph<String, String>, tig2len: &HashMap<String, u64>, threshold: u64) -> HashSet<(String, String, u64)> {
     let mut result: HashSet<(String, String, u64)> = HashSet::new();
+    let mut path_buffer: HashMap<(petgraph::graph::NodeIndex, petgraph::graph::NodeIndex), Vec<petgraph::graph::NodeIndex>> = HashMap::new();
     
     for (p1, p2) in premolecules.iter().cartesian_product(premolecules.iter()) {
         if p1 == p2 {
@@ -44,7 +45,7 @@ fn compute_edge_weight(premolecules: &HashSet<String>, premolecule2tig: &HashMap
         let (tig2, pos2) = premolecule2tig.get(p2).expect("tig1");
         let tig_index2 = *tig2index.get(tig2).expect("tig_index2");
 
-        let weight = get_edge_weight(&tig1, &tig2, pos1, pos2, &tig_index1, &tig_index2, &tig_graph, &tig2len, threshold);
+        let weight = get_edge_weight(&tig1, &tig2, pos1, pos2, &tig_index1, &tig_index2, &tig_graph, &tig2len, threshold, &mut path_buffer);
 
         result.insert((p1.to_string(), p2.to_string(), weight));
     }
@@ -52,12 +53,12 @@ fn compute_edge_weight(premolecules: &HashSet<String>, premolecule2tig: &HashMap
     return result;
 }
 
-fn get_edge_weight(tig1: &String, tig2: &String, pos1: &Vec<u64>, pos2: &Vec<u64>, node1: &petgraph::graph::NodeIndex, node2: &petgraph::graph::NodeIndex, tig_graph: &petgraph::graph::Graph<String, String>, tig2len: &HashMap<String, u64>, threshold: u64) -> u64
+fn get_edge_weight(tig1: &String, tig2: &String, pos1: &Vec<u64>, pos2: &Vec<u64>, node1: &petgraph::graph::NodeIndex, node2: &petgraph::graph::NodeIndex, tig_graph: &petgraph::graph::Graph<String, String>, tig2len: &HashMap<String, u64>, threshold: u64, buffer: &mut HashMap<(petgraph::graph::NodeIndex, petgraph::graph::NodeIndex), Vec<petgraph::graph::NodeIndex>>) -> u64
 {
     return if tig1 == tig2 {
         same_tig_dist(pos1, pos2)
     } else {
-        other_tig_dist(node1, pos1, node2, pos2, &tig_graph, &tig2len, threshold)
+        other_tig_dist(node1, pos1, node2, pos2, &tig_graph, &tig2len, threshold, buffer)
     };
 }
 
@@ -90,16 +91,21 @@ fn same_tig_dist(p1: &Vec<u64>, p2: &Vec<u64>) -> u64 {
     };
 }
 
-fn other_tig_dist(node1: &petgraph::graph::NodeIndex, p1: &Vec<u64>, node2: &petgraph::graph::NodeIndex, p2: &Vec<u64>, graph: &petgraph::graph::Graph<String, String>, tig2len: &HashMap<String, u64>, threshold: u64) -> u64 {
-
+fn other_tig_dist(node1: &petgraph::graph::NodeIndex, p1: &Vec<u64>, node2: &petgraph::graph::NodeIndex, p2: &Vec<u64>, graph: &petgraph::graph::Graph<String, String>, tig2len: &HashMap<String, u64>, threshold: u64, buffer: &mut HashMap<(petgraph::graph::NodeIndex, petgraph::graph::NodeIndex), Vec<petgraph::graph::NodeIndex>>) -> u64 {
     
-    let p = petgraph::algo::astar(graph, *node1, |finish| finish == *node2, |_| 1, |_| 0);
     let path;
-    match p.is_none() {
-        true => return std::u64::MAX,
-        false => path = p.unwrap().1,
-    };
+    if buffer.contains_key(&(*node1, *node2)) {
+        path = buffer.get(&(*node1, *node2)).unwrap().clone();
+    } else {
+        let p = petgraph::algo::astar(graph, *node1, |finish| finish == *node2, |_| 1, |_| 0);
 
+        match p.is_none() {
+            true => return std::u64::MAX,
+            false => path = p.unwrap().1,
+        };
+        buffer.insert((*node1, *node2), path.clone());
+    }
+    
     if path.len() == 2 {
         return other_tig_dist_one_edge(p1, p2, graph, tig2len, threshold, &path);
     } else {
