@@ -54,7 +54,7 @@ fn main() {
              .long("threshold")
              .display_order(40)
              .takes_value(true)
-             .default_value("100000")
+             .default_value("10000")
              .help("Number of read map against contig to add barcode in clique")
         )
         .get_matches();
@@ -68,10 +68,6 @@ fn main() {
     eprintln!("read ema info\n\tbegin");
     let (premolecule2tig_pos, barcode2premolecule, premolecule2reads, reads2barcode) = parse_info::ema(ema_path);
     eprintln!("\tend");
-
-    for (p, t) in premolecule2tig_pos.iter() {
-        println!("{:?} {:?}", p, t);
-    }
     
     eprintln!("read assembly graph\n\tbegin");
     let (tig_graph, tig2len, tig2index) = parse_info::graph(graph_path);

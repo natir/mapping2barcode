@@ -20,8 +20,12 @@ pub fn build_graph(tig_graph: &petgraph::Graph<String, String>, tig2len: &HashMa
         if weight == &std::u64::MAX {
             continue;
         }
-        
-        add_edge_u64(&mut premolecule_graph, &mut node2index, p1.to_string(), p2.to_string(), *weight);
+
+        if weight == 0 {
+            add_edge_u64(&mut premolecule_graph, &mut node2index, p1.to_string(), p2.to_string(), 1);
+        } else {
+            add_edge_u64(&mut premolecule_graph, &mut node2index, p1.to_string(), p2.to_string(), *weight);
+        }
     }
 
     return (premolecule_graph, node2index);
@@ -127,8 +131,12 @@ fn other_tig_dist_one_edge(p1: &Vec<u64>, p2: &Vec<u64>, graph: &petgraph::graph
     } else {
         cumulative_len += length2 - p2.iter().max().unwrap();
     };
-    
-    return cumulative_len;
+
+    if cumulative_len > threshold {
+        return std::u64::MAX;
+    } else {
+        return cumulative_len;
+    }
 }
 
 fn other_tig_dist_x_edge(p1: &Vec<u64>, p2: &Vec<u64>, graph: &petgraph::graph::Graph<String, String>, tig2len: &HashMap<String, u64>, threshold: u64, path: &Vec<petgraph::graph::NodeIndex>) -> u64 {
@@ -155,6 +163,10 @@ fn other_tig_dist_x_edge(p1: &Vec<u64>, p2: &Vec<u64>, graph: &petgraph::graph::
         let length = tig2len.get(node).unwrap();
 
         cumulative_len += length;
+
+        if cumulative_len > threshold {
+            return std::u64::MAX;
+        }
     }
 
     let (edge, weight) = get_edge(node_pair, graph);
@@ -168,7 +180,11 @@ fn other_tig_dist_x_edge(p1: &Vec<u64>, p2: &Vec<u64>, graph: &petgraph::graph::
         cumulative_len += length2 - p2.iter().max().unwrap();
     };
 
-    return cumulative_len;
+    if cumulative_len > threshold {
+        return std::u64::MAX;
+    } else {
+        return cumulative_len;
+    }
 }
 
 fn get_edge(node_weight_couple: &[petgraph::prelude::NodeIndex], graph: &petgraph::graph::Graph<String, String>) -> (petgraph::graph::EdgeIndex, String) {
