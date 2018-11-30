@@ -12,7 +12,8 @@ extern crate enum_primitive;
 
 /* project mod */
 mod file;
-mod work;
+mod parse_info;
+mod premolecule;
 
 /* crates use */
 use clap::{App, Arg};
@@ -65,25 +66,32 @@ fn main() {
     let threshold = matches.value_of("threshold").expect("Error durring threshold access").parse::<u64>().expect("Error durring threshold parsing");
 
     eprintln!("read ema info\n\tbegin");
-    let (premolecule2tig_pos, barcode2premolecule, premolecule2reads, reads2barcode) = work::get_ema_info(ema_path);
-    eprintln!("\tend");
-    
-    eprintln!("read assembly graph\n\tbegin");
-    let (tig_graph, tig2len, tig2index) = work::parse_graph(graph_path);
+    let (premolecule2tig_pos, barcode2premolecule, premolecule2reads, reads2barcode) = parse_info::ema(ema_path);
     eprintln!("\tend");
 
-    eprintln!("build pre molecule graph\n\tbegin");
-    let (premolecule_graph, _) = work::build_premolecule_graph(tig_graph, tig2len, premolecule2tig_pos, barcode2premolecule, tig2index, threshold);
+    for (p, t) in premolecule2tig_pos.iter() {
+        println!("{:?} {:?}", p, t);
+    }
+    
+    eprintln!("read assembly graph\n\tbegin");
+    let (tig_graph, tig2len, tig2index) = parse_info::graph(graph_path);
+    eprintln!("\tend");
+    
+    eprintln!("build premolecule graph\n\tbegin");
+    let (premolecule_graph, _) = premolecule::build_graph(&tig_graph, &tig2len, &premolecule2tig_pos, &barcode2premolecule, &tig2index, threshold);
     eprintln!("\tend");
     
     eprintln!("write premolecule graph\n\tbegin");
     let mut graph_writer = std::io::BufWriter::new(std::fs::File::create(format!("{}_premolecule_graph.edges", output_prefix)).expect("Can't create graph file"));
+       graph_writer.write(b"Source,Target,Weight\n").expect("Error durring premolecule graph header write");
+
     for e in premolecule_graph.raw_edges() {
         graph_writer.write_fmt(format_args!("{},{},{}\n", premolecule_graph[e.source()], premolecule_graph[e.target()], e.weight)).expect("Error durring premolecule graph write");
     }
     eprintln!("\tend");
     
     eprintln!("label reads with molecule\n\tbegin");
+    let mut nb_molecule = 0;
     let mut assignation_writer = std::io::BufWriter::new(std::fs::File::create(format!("{}_read2molecule.tsv", output_prefix)).expect("Can't create result file"));
     for (id, cc) in petgraph::algo::kosaraju_scc(&premolecule_graph).iter().enumerate() {
         for node in cc {
@@ -94,7 +102,14 @@ fn main() {
                 assignation_writer.write_fmt(format_args!("{}\t{}\t{}\n", barcode, read, id)).expect("Error durring read to molecule write");
             }
         }
+
+        nb_molecule = id;
     }
     eprintln!("\tend");
+
+    eprintln!("statistique:");
+    eprintln!("\tnumber of premolecule\t{}", premolecule2reads.len());
+    eprintln!("\tnumber of barcode\t{}", barcode2premolecule.len());
+    eprintln!("\tnumber of molecule\t{}", nb_molecule + 1);
 }
 
