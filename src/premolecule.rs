@@ -11,9 +11,12 @@ pub fn build_graph(tig_graph: &petgraph::Graph<String, String>, tig2len: &HashMa
     let mut premolecule_graph: petgraph::graph::Graph<String, u64> = petgraph::graph::Graph::new();
     let mut node2index: HashMap<String, petgraph::graph::NodeIndex> = HashMap::new();
 
-    let mut edges: HashSet<(String, String, u64)> = HashSet::new(); 
+    let mut edges: HashSet<(String, String, u64)> = HashSet::new();
     for premolecules in barcode2premolecule.values() {
         edges.extend(compute_edge_weight(premolecules, premolecule2tig, tig2index, tig_graph, tig2len, threshold));
+        for premolecule in premolecules.iter() {
+            add_node_u64(&mut premolecule_graph, premolecule.to_string(), &mut node2index);
+        }
     }    
 
     for (p1, p2, weight) in edges.iter() {
