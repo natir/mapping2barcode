@@ -71,12 +71,26 @@ pub fn ema(tsv_path: String) -> (HashMap<String, (String, Vec<u64>)>, HashMap<St
         let pos = record[2].parse::<u64>().unwrap();
         let barcode_id = record[3].to_string();
         let premolecule_id = format!("{}_{}", &record[3], &record[4]);
+
+        let new_read_id = found_read_id(&reads2barcode, &read_id);
         
         premolecule2tig_pos.entry(premolecule_id.clone()).or_insert((tig_id.clone(), Vec::new())).1.push(pos);
         barcode2premolecule.entry(barcode_id.clone()).or_insert(HashSet::new()).insert(premolecule_id.clone());
-        premolecule2reads.entry(premolecule_id.clone()).or_insert(HashSet::new()).insert(read_id.clone());
-        reads2barcode.insert(read_id, barcode_id);
+        premolecule2reads.entry(premolecule_id.clone()).or_insert(HashSet::new()).insert(new_read_id.clone());
+        reads2barcode.insert(new_read_id, barcode_id);
     }
 
     return (premolecule2tig_pos, barcode2premolecule, premolecule2reads, reads2barcode);
+}
+
+fn found_read_id(reads2barcode: &HashMap<String, String>, read: &String) -> String {
+    let mut i: u32 = 1;
+    let mut new_id = format!("{}_{}", read.to_string(), i);
+    
+    while reads2barcode.contains_key(&new_id) {
+        i += 1;
+        new_id = format!("{}_{}", read, i);
+    }
+
+    return new_id;
 }
