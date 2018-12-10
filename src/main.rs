@@ -121,13 +121,15 @@ fn main() {
     let mut read_assign: HashMap<String, (String, String, usize)> = HashMap::new();
 
     let mut multi_assign_writer = std::io::BufWriter::new(std::fs::File::create(format!("{}_multi_assign.lst", output_prefix)).expect("Can't create multi assign read pairs file"));
-    
+    let mut read2premole_writer = std::io::BufWriter::new(std::fs::File::create(format!("{}_read2premolecule.lst", output_prefix)).expect("Can't create multi assign read pairs file"));    
     for (id, cc) in petgraph::algo::kosaraju_scc(&premolecule_graph).iter().enumerate() {
         for node in cc {
             let premolecule = premolecule_graph.node_weight(*node).unwrap();
             for read in premolecule2reads.get(premolecule).unwrap() {
                 let barcode = reads2barcode.get(read).unwrap();
                 let basic_read = &read[0..read.rfind("_").unwrap()];
+                
+                read2premole_writer.write_fmt(format_args!("{},{}\n", basic_read, premolecule)).unwrap();
 
                 if read_assign.contains_key(basic_read) {
                     if id != read_assign.get(basic_read).expect("You can't be her").2 {
