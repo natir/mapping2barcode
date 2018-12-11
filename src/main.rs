@@ -91,22 +91,28 @@ fn main() {
     eprintln!("build premolecule graph\n\tbegin");
     begin = time::Instant::now();
 
-    let (premolecule_graph, _) = premolecule::build_graph(&tig_graph, &tig2len, &premolecule2tig_pos, &barcode2premolecule, &tig2index, threshold);
+    let (premolecule_graph, premol_node2index) = premolecule::build_graph(&tig_graph, &tig2len, &premolecule2tig_pos, &barcode2premolecule, &tig2index, threshold);
 
     duration = time::Instant::now() - begin;
     eprintln!("\tend {}s{}", duration.as_secs(), duration.subsec_millis());
 
     
+    /* Clean premolecule graph */
+    eprintln!("clean premolecule graph\n\tbegin");
+    begin = time::Instant::now();
+
+    let clean_graph = premolecule::clean_graph(&premolecule_graph, &premol_node2index);
+    premolecule::write_graph(&clean_graph, format!("{}_clean_graph.edges", output_prefix));
+    
+    duration = time::Instant::now() - begin;
+    eprintln!("\tend {}s{}", duration.as_secs(), duration.subsec_millis());
+    
+    
     /* Write graph */
     eprintln!("write premolecule graph\n\tbegin");
     begin = time::Instant::now();
 
-    let mut graph_writer = std::io::BufWriter::new(std::fs::File::create(format!("{}_premolecule_graph.edges", output_prefix)).expect("Can't create graph file"));
-       graph_writer.write(b"Source,Target,Weight\n").expect("Error durring premolecule graph header write");
-
-    for e in premolecule_graph.raw_edges() {
-        graph_writer.write_fmt(format_args!("{},{},{}\n", premolecule_graph[e.source()], premolecule_graph[e.target()], e.weight)).expect("Error durring premolecule graph write");
-    }
+    premolecule::write_graph(&premolecule_graph, format!("{}_premolecule_graph.edges", output_prefix));
 
     duration = time::Instant::now() - begin;
     eprintln!("\tend {}s{}", duration.as_secs(), duration.subsec_millis());
@@ -122,6 +128,7 @@ fn main() {
 
     let mut multi_assign_writer = std::io::BufWriter::new(std::fs::File::create(format!("{}_multi_assign.lst", output_prefix)).expect("Can't create multi assign read pairs file"));
     let mut read2premole_writer = std::io::BufWriter::new(std::fs::File::create(format!("{}_read2premolecule.lst", output_prefix)).expect("Can't create multi assign read pairs file"));    
+
     for (id, cc) in petgraph::algo::kosaraju_scc(&premolecule_graph).iter().enumerate() {
         for node in cc {
             let premolecule = premolecule_graph.node_weight(*node).unwrap();
