@@ -4,63 +4,71 @@ use std::collections::{HashMap, HashSet};
 /* crates use */
 use itertools::Itertools;
 use petgraph::visit::EdgeRef;
+use petgraph::visit::IntoNodeReferences;
 
 /* std use */
 use std::io::Write;
 
 
-pub fn build_graph(tig_graph: &petgraph::Graph<String, String>, tig2len: &HashMap<String, u64>, premolecule2tig: &HashMap<String, (String, Vec<u64>)>, barcode2premolecule: &HashMap<String, HashSet<String>>, tig2index: &HashMap<String, petgraph::graph::NodeIndex>, threshold: u64) -> (petgraph::Graph<String, u64>, HashMap<String, petgraph::graph::NodeIndex>) {
-    
-    let mut premolecule_graph: petgraph::graph::Graph<String, u64> = petgraph::graph::Graph::new();
-    let mut node2index: HashMap<String, petgraph::graph::NodeIndex> = HashMap::new();
+pub fn build_graph(tig_graph: &petgraph::Graph<String, String>, tig2len: &HashMap<String, u64>, premolecule2tig: &HashMap<String, (String, Vec<u64>)>, barcode2premolecule: &HashMap<String, HashSet<String>>, tig2index: &HashMap<String, petgraph::graph::NodeIndex>, threshold: u64) -> Vec<petgraph::Graph<String, u64>> {
 
-    let mut edges: HashSet<(String, String, u64)> = HashSet::new();
+    let mut ret: Vec<petgraph::Graph<String, u64>> = Vec::new();
+
     for premolecules in barcode2premolecule.values() {
+        
+        let mut edges: HashSet<(String, String, u64)> = HashSet::new();
+        let mut premolecule_graph: petgraph::graph::Graph<String, u64> = petgraph::graph::Graph::new();
+        let mut node2index: HashMap<String, petgraph::graph::NodeIndex> = HashMap::new();
+
         edges.extend(compute_edge_weight(premolecules, premolecule2tig, tig2index, tig_graph, tig2len, threshold));
         for premolecule in premolecules.iter() {
             add_node_u64(&mut premolecule_graph, premolecule.to_string(), &mut node2index);
         }
-    }    
-
-    for (p1, p2, weight) in edges.iter() {
-        if weight == &std::u64::MAX {
-            continue;
-        }
-
-        if *weight == 0 {
-            add_edge_u64(&mut premolecule_graph, &mut node2index, p1.to_string(), p2.to_string(), 1);
-        } else {
-            add_edge_u64(&mut premolecule_graph, &mut node2index, p1.to_string(), p2.to_string(), *weight);
-        }
-    }
-
-    return (premolecule_graph, node2index);
-}
-
-pub fn clean_graph(premolecule_graph: &petgraph::Graph<String, u64>, pre_node2index: &HashMap<String, petgraph::graph::NodeIndex>) -> petgraph::Graph<String, u64>{
-
-    let mut graph: petgraph::graph::Graph<String, u64> = petgraph::graph::Graph::new();
-
-    let mut node2index: HashMap<String, petgraph::graph::NodeIndex> = HashMap::new();
-    let mut visited_node: HashSet<String> = HashSet::new();
-    
-    for (node, idx) in pre_node2index.iter() {
-        let mut sort_edges = premolecule_graph.edges(*idx).map(|x| (x, *premolecule_graph.edge_weight(x.id()).unwrap())).collect::<Vec<(petgraph::graph::EdgeReference<u64>, u64)>>();
-        sort_edges.sort_by_key(|x| x.1);
         
-        for (e, weight) in sort_edges.iter() {
-            let target = premolecule_graph.node_weight(e.target()).unwrap().to_string();
-            
-            if !visited_node.contains(&target) {
-                add_edge_u64(&mut graph, &mut node2index, node.to_string(), target.to_string(), *weight);
-                
-                visited_node.insert(target);
+
+        for (p1, p2, weight) in edges.iter() {
+            if weight == &std::u64::MAX {
                 continue;
             }
+
+            if *weight == 0 {
+                add_edge_u64(&mut premolecule_graph, &mut node2index, p1.to_string(), p2.to_string(), 1);
+            } else {
+                add_edge_u64(&mut premolecule_graph, &mut node2index, p1.to_string(), p2.to_string(), *weight);
+            }
         }
+
+        ret.push(premolecule_graph);
     }
     
-    return graph;
+    return ret;
+}
+
+pub fn clean_graph(premolecule_graph: &mut Vec<petgraph::Graph<String, u64>>) -> Vec<petgraph::Graph<String, u64>> {
+    let mut graphs: Vec<petgraph::graph::Graph<String, u64>> = Vec::new();
+
+    for g in premolecule_graph.iter_mut() {
+        let mut graph = g.clone();
+        
+        let mut edges = (&g).edge_references().collect::<Vec<_>>();
+        edges.sort_by_key(|x| x.weight());
+        edges.reverse();
+        
+        let mut n = 0;
+        for edge in edges {
+            
+            let tmp_e = graph.find_edge(edge.source(), edge.target()).unwrap();
+
+            graph.remove_edge(tmp_e);
+            if petgraph::algo::connected_components(&graph) > 1 {
+                graph.add_edge(edge.source(), edge.target(), *edge.weight());
+            }
+        }
+
+        graphs.push(graph);
+    }
+    
+    return graphs;
 }
 
 fn compute_edge_weight(premolecules: &HashSet<String>, premolecule2tig: &HashMap<String, (String, Vec<u64>)>, tig2index: &HashMap<String, petgraph::graph::NodeIndex>, tig_graph: &petgraph::Graph<String, String>, tig2len: &HashMap<String, u64>, threshold: u64) -> HashSet<(String, String, u64)> {
@@ -232,13 +240,14 @@ fn get_edge(node_weight_couple: &[petgraph::prelude::NodeIndex], graph: &petgrap
     return (edge, weight.to_string());
 }
 
-pub fn write_graph(graph: &petgraph::graph::Graph<String, u64>, path: String)-> () {
+pub fn write_graph(graphs: &Vec<petgraph::graph::Graph<String, u64>>, path: String)-> () {
     let mut graph_writer = std::io::BufWriter::new(std::fs::File::create(path).expect("Can't create graph file"));
     
-       graph_writer.write(b"Source,Target,Weight\n").expect("Error durring premolecule graph header write");
+    graph_writer.write(b"Source,Target,Weight\n").expect("Error durring premolecule graph header write");
 
-    for e in graph.raw_edges() {
-        graph_writer.write_fmt(format_args!("{},{},{}\n", graph[e.source()], graph[e.target()], e.weight)).expect("Error durring premolecule graph write");
+    for g in graphs.iter() {
+        for e in g.raw_edges() {
+            graph_writer.write_fmt(format_args!("{},{},{}\n", g[e.source()], g[e.target()], e.weight)).expect("Error durring premolecule graph write");
+        }
     }
-
 }
