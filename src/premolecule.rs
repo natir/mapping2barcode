@@ -2,9 +2,6 @@
 use std::collections::{HashMap, HashSet};
 
 /* crates use */
-use itertools::Itertools;
-use petgraph::visit::EdgeRef;
-use petgraph::visit::IntoNodeReferences;
 
 /* std use */
 use std::io::Write;

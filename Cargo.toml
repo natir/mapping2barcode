@@ -1,15 +1,12 @@
 [package]
 name = "mapping2barcodegraph"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Marijon Pierre <pierre.marijon@inria.fr>"]
 
+edition = "2018"
+
 [dependencies]
-bio             = "0.20"
-xz2             = "0.1"
+bio             = "0.30"
 csv	        = "1"
-clap            = "2.32"
-bzip2           = "0.3.3"
-flate2          = "1.0"
-petgraph        = "*"
-itertools       = "*"
-enum_primitive  = "0.1.1"
+niffler		= "2"
+structopt       = "0.3"
