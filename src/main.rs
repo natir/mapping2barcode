@@ -24,10 +24,10 @@ struct Command {
     #[structopt(short = "o", long = "output", help = "path where barcode graph is write")]
     output: String,
 
-    #[structopt(short = "l", long = "overlap-length", help = "minimum overlap length", default_value = "7000")]
+    #[structopt(short = "l", long = "overlap-length", help = "minimum overlap length", default_value = "9000")]
     threshold: u64,
 
-    #[structopt(short = "p", long = "premolecule-threshold", help = "maximal distance between two read ", default_value = "3500")]
+    #[structopt(short = "p", long = "premolecule-threshold", help = "maximal distance between two read ", default_value = "5000")]
     premolecule: u64,
 }
 
@@ -54,7 +54,7 @@ fn main() {
     duration = time::Instant::now() - begin;
     eprintln!("\tend {}s{}", duration.as_secs(), duration.subsec_millis());
 
-
+    
     eprintln!("found edge of barcode graph\n\tbegin");
     begin = time::Instant::now();
     
@@ -102,6 +102,7 @@ fn main() {
     duration = time::Instant::now() - begin;
     eprintln!("\tend {}s{}", duration.as_secs(), duration.subsec_millis());
 
+    
     eprintln!("write barcode graph\n\tbegin");
     begin = time::Instant::now();
 
